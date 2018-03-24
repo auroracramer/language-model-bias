@@ -36,8 +36,18 @@ def preprocess_file(filepath):
     en = spacy.load('en')
 
     # Open file
-    with open(filepath, 'r') as f:
-        text = f.read()
+    try:
+        with open(filepath, 'r') as f:
+            text = f.read()
+    except UnicodeDecodeError as e:
+        try:
+            # Account for some files that may be encoded with ISO-8859-1
+            with open(filepath, 'r', encoding='iso-8859-1') as f:
+                text = f.read().encode('utf-8')
+        except UnicodeDecodeError as e:
+            msg = "Could not open {}: {}".format(filepath, str(e))
+            raise Exception(msg)
+
 
     # Remove any additional information e.g. "@highlights"
     main_text_body = text.split('\n@')[0]
