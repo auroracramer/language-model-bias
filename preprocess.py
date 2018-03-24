@@ -43,7 +43,7 @@ def preprocess_file(filepath):
         try:
             # Account for some files that may be encoded with ISO-8859-1
             with open(filepath, 'r', encoding='iso-8859-1') as f:
-                text = f.read().encode('utf-8')
+                text = f.read()
         except UnicodeDecodeError as e:
             msg = "Could not open {}: {}".format(filepath, str(e))
             raise Exception(msg)
