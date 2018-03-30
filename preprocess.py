@@ -10,6 +10,8 @@ import gzip
 import spacy
 from io import BytesIO
 
+en = spacy.load('en')
+
 
 def is_valid_token(w):
     """
@@ -23,18 +25,13 @@ def transform_token(w):
     Transforms a token by making lowercase, and for numeric tokens replaces
     digits with placeholders
     """
-    w = w.lower()
-    if not re.search('[a-zA-z]+', w):
-        w = re.sub(r'\d', '##NUMBER##', w.lower())
-    return w
+    return re.sub(r'\d+', '<NUM>', w.lower())
 
 
 def preprocess_file(filepath):
     """
     Preprocesses a file by splitting it into sentences and tokenizing it
     """
-    en = spacy.load('en')
-
     # Open file
     try:
         with open(filepath, 'r') as f:
@@ -102,11 +99,11 @@ def write_preprocessed_file(encoded_sentences, output_path):
         f.write(buf)
 
 
-def encode_sentences(sentences, vocab):
+def encode_sentences(sentences, word_to_idx):
     """
     Encode tokens in sentences by vocab indices
     """
-    return [[vocab.index(w) for w in sent] for sent in sentences]
+    return [[word_to_idx[w] for w in sent] for sent in sentences]
 
 
 def read_preprocessed_file(filepath, vocab):
@@ -130,6 +127,53 @@ def read_preprocessed_file(filepath, vocab):
             sent = []
 
     return sentences
+
+
+def read_preprocessed_file_as_str(filepath, vocab, sent_delim='<eos>'):
+    """
+    Reads a preprocessed text file. Returns a list of sentences, where
+    each sentence is a list of tokens.
+    """
+    # Get binary string
+    with gzip.open(filepath, 'rb') as f:
+        buf = f.read()
+
+    res = ""
+    first_word = True
+    for (val,) in struct.iter_unpack('I', buf):
+        if not first_word:
+            res += ' '
+        else:
+            first_word = False
+
+        if val > 0:
+
+            # Get words for the current sentence
+            res += vocab[val-1]
+        else:
+            # We've reached the end of the sentence
+            res += sent_delim
+    res += ' ' + sent_delim
+
+    return res
+
+
+def load_preprocesed_dataset(pp_dataset_dir, sent_delim='<eos>', vocab_path=None):
+    if not vocab_path:
+        vocab_path = os.path.join(pp_dataset_dir, 'VOCAB.txt')
+
+    vocab = read_vocab(vocab_path)
+
+    data_dir = os.path.join(pp_dataset_dir, 'data')
+
+    res = ""
+    for idx, fname in enumerate(os.listdir(data_dir)):
+        if idx != 0:
+            res += ' '
+        filepath = os.path.join(data_dir, fname)
+        res += read_preprocessed_file_as_str(filepath, vocab, sent_delim='<eos>')
+
+    return res
 
 
 def read_vocab(vocab_path):
@@ -159,6 +203,15 @@ def preprocess_worker(args):
 
     return out_path, sentences, tokens
 
+def save_worker(args):
+    """
+    Multiprocessing worker for saving a preprocessed file
+    """
+    output_path, sentences, word_to_idx = args
+
+    sentences = encode_sentences(sentences, word_to_idx)
+    write_preprocessed_file(sentences, output_path)
+
 
 def preprocess_dataset(dataset_dir, output_dir, target_ext='.txt', num_workers=1):
     """
@@ -178,6 +231,7 @@ def preprocess_dataset(dataset_dir, output_dir, target_ext='.txt', num_workers=1
     vocab = set()
     worker_args = []
 
+    print("Getting list of files...")
     # Get list of txt files
     for root, dirs, files in os.walk(dataset_dir):
         root = os.path.abspath(root)
@@ -195,20 +249,27 @@ def preprocess_dataset(dataset_dir, output_dir, target_ext='.txt', num_workers=1
 
     pool = mp.Pool(num_workers)
 
+    print("Preprocessing files...")
     output_paths = []
     articles = []
+    num_files = len(worker_args)
     # Preprocess each file and get the tokens in each file
-    for out_path, sentences, tokens in pool.imap_unordered(preprocess_worker, worker_args):
+    for idx, (out_path, sentences, tokens) in enumerate(pool.imap_unordered(preprocess_worker, worker_args)):
         output_paths.append(out_path)
         articles.append(sentences)
         vocab.update(tokens)
+
+        if ((idx+1) % 1000) == 0:
+            print("Preprocessed {}/{} files".format(idx+1, num_files))
 
     pool.close()
     pool.join()
 
 
     # Sort vocab and make into a list
+    print("Saving vocab...")
     vocab = list(sorted(vocab))
+    word_to_idx = {w: idx for (idx, w) in enumerate(vocab)}
 
     # Write vocab to disk
     vocab_path = os.path.join(output_dir, 'VOCAB.txt')
@@ -216,9 +277,18 @@ def preprocess_dataset(dataset_dir, output_dir, target_ext='.txt', num_workers=1
         f.write('\n'.join(vocab))
 
     # Encode preprocessed files and write them to disk
-    for output_path, sentences in zip(output_paths, articles):
-        sentences = encode_sentences(sentences, vocab)
-        write_preprocessed_file(sentences, output_path)
+    worker_args = [(output_path, sentences, word_to_idx)
+                   for output_path, sentnces in zip(output_paths, articles)]
+
+    print("Saving files...")
+    pool = mp.Pool(num_workers)
+    for idx, _ in enumerate(pool.imap_unordered(save_worker, worker_args)):
+        if ((idx+1) % 1000) == 0:
+            print("Saved {}/{} files".format(idx+1, num_files))
+    pool.close()
+    pool.join()
+
+    print("Done.")
 
 
 def parse_arguments():
@@ -229,7 +299,7 @@ def parse_arguments():
     parser.add_argument('dataset_dir', help='Path to directory containing text files', type=str)
     parser.add_argument('output_dir', help='Path to output directory', type=str)
     parser.add_argument('target_ext', help='Extension of relevant text files', type=str)
-    parser.add_argument('-n', '--num-workers', type=int, default=1, help='Number of workers')
+    parser.add_argument('-n', '--num-workers', dest='num_workers', type=int, default=1, help='Number of workers')
     return vars(parser.parse_args())
 
 
