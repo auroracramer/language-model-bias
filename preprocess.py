@@ -5,11 +5,15 @@ import re
 import ctypes
 import argparse
 import struct
-import pickle
 import gzip
 import spacy
 from unidecode import unidecode
-from io import BytesIO
+import logging
+from log import init_console_logger
+
+
+LOGGER = logging.getLogger('preprocess')
+LOGGER.setLevel(logging.DEBUG)
 
 en = spacy.load('en')
 
@@ -208,11 +212,13 @@ def preprocess_worker(args):
 
     return out_path, sentences, tokens
 
+
 def save_worker(args):
     """
     Multiprocessing worker for saving a preprocessed file
     """
-    output_path, sentences, word_to_idx = args
+    output_path, sentences, vocab_path = args
+    word_to_idx = {w: idx for (idx, w) in enumerate(read_vocab(vocab_path))}
 
     sentences = encode_sentences(sentences, word_to_idx)
     write_preprocessed_file(sentences, output_path)
@@ -240,7 +246,7 @@ def preprocess_dataset(dataset_dir, output_dir, target_ext='.txt', num_workers=1
     vocab = set()
     worker_args = []
 
-    print("Getting list of files...")
+    LOGGER.info("Getting list of files...")
     # Get list of txt files
     for root, dirs, files in os.walk(dataset_dir):
         root = os.path.abspath(root)
@@ -258,7 +264,7 @@ def preprocess_dataset(dataset_dir, output_dir, target_ext='.txt', num_workers=1
 
     pool = mp.Pool(num_workers)
 
-    print("Preprocessing files...")
+    LOGGER.info("Preprocessing files...")
     output_paths = []
     articles = []
     num_files = len(worker_args)
@@ -269,38 +275,40 @@ def preprocess_dataset(dataset_dir, output_dir, target_ext='.txt', num_workers=1
         vocab.update(tokens)
 
         if ((idx+1) % 1000) == 0:
-            print("Preprocessed {}/{} files".format(idx+1, num_files))
+            LOGGER.info("Preprocessed {}/{} files".format(idx+1, num_files))
 
     pool.close()
     pool.join()
 
 
     # Sort vocab and make into a list
-    print("Saving vocab...")
+    LOGGER.info("Saving vocab...")
     vocab = list(sorted(vocab))
-    word_to_idx = {w: idx for (idx, w) in enumerate(vocab)}
 
     # Write vocab to disk
     vocab_path = os.path.join(output_dir, 'VOCAB.txt')
     with open(vocab_path, 'w') as f:
         f.write('\n'.join(vocab))
 
+    # Delete vocab from memory to preserve space
+    del vocab
+
     # Encode preprocessed files and write them to disk
     # Wrap list in an iterator that removes elements in the list (thus freeing
     # the memory) as elements are yielded. This will prevent the memory usage
     # from doubling when data is copied to multiprocessing workers
-    articles = mem_clr_list_iterator([(output_path, sentences, word_to_idx)
+    articles = mem_clr_list_iterator([(output_path, sentences, vocab_path)
                 for output_path, sentences in zip(output_paths, articles)])
 
-    print("Saving files...")
+    LOGGER.info("Saving files...")
     pool = mp.Pool(num_workers)
     for idx, _ in enumerate(pool.imap_unordered(save_worker, articles)):
         if ((idx+1) % 1000) == 0:
-            print("Saved {}/{} files".format(idx+1, num_files))
+            LOGGER.info("Saved {}/{} files".format(idx+1, num_files))
     pool.close()
     pool.join()
 
-    print("Done.")
+    LOGGER.info("Done.")
 
 
 def parse_arguments():
@@ -316,4 +324,5 @@ def parse_arguments():
 
 
 if __name__ == '__main__':
+    init_console_logger(LOGGER)
     preprocess_dataset(**(parse_arguments()))
