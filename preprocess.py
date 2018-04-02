@@ -8,6 +8,7 @@ import struct
 import pickle
 import gzip
 import spacy
+from unidecode import unidecode
 from io import BytesIO
 
 en = spacy.load('en')
@@ -25,7 +26,11 @@ def transform_token(w):
     Transforms a token by making lowercase, and for numeric tokens replaces
     digits with placeholders
     """
-    return re.sub(r'\d+', '<NUM>', w.lower())
+    return re.sub(r'[.\-\']+$', '',
+      re.sub(r'[.\-\']+', '',
+        re.sub(r'[^A-Za-z<>$.\-\']', '',
+            re.sub(r'\d+', '<NUM>',
+                unidecode(w).lower()))))
 
 
 def preprocess_file(filepath):
@@ -212,6 +217,10 @@ def save_worker(args):
     sentences = encode_sentences(sentences, word_to_idx)
     write_preprocessed_file(sentences, output_path)
 
+def mem_clr_list_iterator(lst):
+    while lst:
+        yield lst.pop()
+
 
 def preprocess_dataset(dataset_dir, output_dir, target_ext='.txt', num_workers=1):
     """
@@ -277,12 +286,15 @@ def preprocess_dataset(dataset_dir, output_dir, target_ext='.txt', num_workers=1
         f.write('\n'.join(vocab))
 
     # Encode preprocessed files and write them to disk
-    worker_args = [(output_path, sentences, word_to_idx)
-                   for output_path, sentnces in zip(output_paths, articles)]
+    # Wrap list in an iterator that removes elements in the list (thus freeing
+    # the memory) as elements are yielded. This will prevent the memory usage
+    # from doubling when data is copied to multiprocessing workers
+    articles = mem_clr_list_iterator([(output_path, sentences, word_to_idx)
+                for output_path, sentences in zip(output_paths, articles)])
 
     print("Saving files...")
     pool = mp.Pool(num_workers)
-    for idx, _ in enumerate(pool.imap_unordered(save_worker, worker_args)):
+    for idx, _ in enumerate(pool.imap_unordered(save_worker, articles)):
         if ((idx+1) % 1000) == 0:
             print("Saved {}/{} files".format(idx+1, num_files))
     pool.close()
