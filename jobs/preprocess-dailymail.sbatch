@@ -2,8 +2,8 @@
 
 #SBATCH --job-name=preprocess-dailymail
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64GB
+#SBATCH --cpus-per-task=28
+#SBATCH --mem=125GB
 #SBATCH --time=7-0
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=jtc440@nyu.edu
@@ -20,4 +20,4 @@ OUTPUT_DIR=/beegfs/jtc440/ds1012/preprocessed_data/dailymail
 
 module purge
 
-python $SRCDIR/preprocess.py $DATASET_DIR $OUTPUT_DIR .story -n 8
+python $SRCDIR/preprocess.py $DATASET_DIR $OUTPUT_DIR .story -n 28
