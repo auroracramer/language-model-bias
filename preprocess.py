@@ -7,7 +7,7 @@ import argparse
 import struct
 import gzip
 import spacy
-import cPickle as pk
+import pickle as pk
 from unidecode import unidecode
 import logging
 from log import init_console_logger
