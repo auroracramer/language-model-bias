@@ -7,7 +7,7 @@ import argparse
 import struct
 import gzip
 import spacy
-import pickle as pk
+import _pickle as pk
 from unidecode import unidecode
 import logging
 from log import init_console_logger
@@ -86,7 +86,10 @@ def preprocess_file(filepath, output_path):
     else:
         # If tmp file already exists, just load file to get tokens
         with gzip.open(tmp_output_path, 'rb') as f:
-            sentence_tokens = pk.load(f)
+            try:
+                sentence_tokens = pk.load(f)
+            except EOFError:
+                sentence_tokens = []
 
         tokens = set()
         for sent in sentence_tokens:
@@ -238,13 +241,17 @@ def save_worker(args):
     word_to_idx = {w: idx for (idx, w) in enumerate(read_vocab(vocab_path))}
 
     # Read tmp file
-    with gzip.open(tmp_output_path, 'rb') as f:
-        sentences = encode_sentences(pk.load(f), word_to_idx)
-
+    if os.path.exists(tmp_output_path):
+        with gzip.open(tmp_output_path, 'rb') as f:
+            try:
+                sentences = encode_sentences(pk.load(f), word_to_idx)
+            except EOFError:
+                sentences = []
+    if os.path.exists(tmp_output_path):
     # Remove tmp file
-    os.remove(tmp_output_path)
+        os.remove(tmp_output_path)
 
-    write_preprocessed_file(sentences, output_path)
+        write_preprocessed_file(sentences, output_path)
 
 def mem_clr_list_iterator(lst):
     while lst:
@@ -330,6 +337,21 @@ def preprocess_dataset(dataset_dir, output_dir, target_ext='.txt', num_workers=1
     pool.join()
 
     LOGGER.info("Done.")
+
+
+def generate_input_for_glove(input_files,input_vocab, output_file):
+    """Generates input for the gloves ./demo.sh.  The output_file or the input for glove is text file of words separated by            whitespaces
+    """
+    bin_files = glob.glob(input_files)
+    
+    words =''
+    
+    for f in bin_files:
+        sentences = read_preprocessed_file(f, read_vocab(input_vocab))
+        words += ' '.join([' '.join(sent) for sent in sentences])
+                   
+    with open(output_file, "w") as outfile:
+        outfile.write(words)
 
 
 def parse_arguments():
