@@ -7,6 +7,7 @@ import argparse
 import struct
 import gzip
 import spacy
+import cPickle as pk
 from unidecode import unidecode
 import logging
 from log import init_console_logger
@@ -37,7 +38,7 @@ def transform_token(w):
                 unidecode(w).lower()))))
 
 
-def preprocess_file(filepath):
+def preprocess_file(filepath, output_path):
     """
     Preprocesses a file by splitting it into sentences and tokenizing it
     """
@@ -63,21 +64,35 @@ def preprocess_file(filepath):
     for line in main_text_body.split('\n\n'):
         sentences += list(en(line.strip('\n')).sents)
 
-    # Get tokens for each sentence
-    tokens = set()
-    sentence_tokens = []
-    for sent in sentences:
-        sent_tokens = []
-        for w in sent:
-            if not is_valid_token(w.text):
-                continue
-            w = transform_token(w.text)
-            sent_tokens.append(w)
-            tokens.add(w)
-        if len(sent_tokens) > 1:
-            sentence_tokens.append(sent_tokens)
+    tmp_output_path = output_path[-3:] + 'tmp'
 
-    return sentence_tokens, tokens
+    if not os.path.exists(tmp_output_path):
+        # Get tokens for each sentence
+        tokens = set()
+        sentence_tokens = []
+        for sent in sentences:
+            sent_tokens = []
+            for w in sent:
+                if not is_valid_token(w.text):
+                    continue
+                w = transform_token(w.text)
+                sent_tokens.append(w)
+                tokens.add(w)
+            if len(sent_tokens) > 1:
+                sentence_tokens.append(sent_tokens)
+
+        with gzip.open(tmp_output_path, 'wb') as f:
+            pk.dump(sentence_tokens, f)
+    else:
+        # If tmp file already exists, just load file to get tokens
+        with gzip.open(tmp_output_path, 'rb') as f:
+            sentence_tokens = pk.load(f)
+
+        tokens = set()
+        for sent in sentence_tokens:
+            tokens.update(set(sent))
+
+    return tokens
 
 
 def write_preprocessed_file(encoded_sentences, output_path):
@@ -208,19 +223,27 @@ def preprocess_worker(args):
         out_prefix += '_'
     out_path = os.path.join(output_data_dir, '{}{}.bin'.format(out_prefix, basename))
 
-    sentences, tokens = preprocess_file(txt_path)
+    tokens = preprocess_file(txt_path, out_path)
 
-    return out_path, sentences, tokens
+    return out_path, tokens
 
 
 def save_worker(args):
     """
     Multiprocessing worker for saving a preprocessed file
     """
-    output_path, sentences, vocab_path = args
+    output_path, vocab_path = args
+    tmp_output_path = output_path[-3:] + 'tmp'
+
     word_to_idx = {w: idx for (idx, w) in enumerate(read_vocab(vocab_path))}
 
-    sentences = encode_sentences(sentences, word_to_idx)
+    # Read tmp file
+    with gzip.open(tmp_output_path, 'rb') as f:
+        sentences = encode_sentences(pk.load(f), word_to_idx)
+
+    # Remove tmp file
+    os.remove(tmp_output_path)
+
     write_preprocessed_file(sentences, output_path)
 
 def mem_clr_list_iterator(lst):
@@ -266,12 +289,10 @@ def preprocess_dataset(dataset_dir, output_dir, target_ext='.txt', num_workers=1
 
     LOGGER.info("Preprocessing files...")
     output_paths = []
-    articles = []
     num_files = len(worker_args)
     # Preprocess each file and get the tokens in each file
-    for idx, (out_path, sentences, tokens) in enumerate(pool.imap_unordered(preprocess_worker, worker_args)):
+    for idx, (out_path, tokens) in enumerate(pool.imap_unordered(preprocess_worker, worker_args)):
         output_paths.append(out_path)
-        articles.append(sentences)
         vocab.update(tokens)
 
         if ((idx+1) % 1000) == 0:
@@ -297,12 +318,12 @@ def preprocess_dataset(dataset_dir, output_dir, target_ext='.txt', num_workers=1
     # Wrap list in an iterator that removes elements in the list (thus freeing
     # the memory) as elements are yielded. This will prevent the memory usage
     # from doubling when data is copied to multiprocessing workers
-    articles = mem_clr_list_iterator([(output_path, sentences, vocab_path)
-                for output_path, sentences in zip(output_paths, articles)])
+    worker_args = mem_clr_list_iterator([(output_path, vocab_path)
+                                         for output_path in output_paths])
 
     LOGGER.info("Saving files...")
     pool = mp.Pool(num_workers)
-    for idx, _ in enumerate(pool.imap_unordered(save_worker, articles)):
+    for idx, _ in enumerate(pool.imap_unordered(save_worker, worker_args)):
         if ((idx+1) % 1000) == 0:
             LOGGER.info("Saved {}/{} files".format(idx+1, num_files))
     pool.close()
