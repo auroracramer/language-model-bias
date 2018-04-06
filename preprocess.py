@@ -64,7 +64,7 @@ def preprocess_file(filepath, output_path):
     for line in main_text_body.split('\n\n'):
         sentences += list(en(line.strip('\n')).sents)
 
-    tmp_output_path = output_path[-3:] + 'tmp'
+    tmp_output_path = output_path[:-3] + 'tmp'
 
     if not os.path.exists(tmp_output_path):
         # Get tokens for each sentence
@@ -236,7 +236,7 @@ def save_worker(args):
     Multiprocessing worker for saving a preprocessed file
     """
     output_path, vocab_path = args
-    tmp_output_path = output_path[-3:] + 'tmp'
+    tmp_output_path = output_path[:-3] + 'tmp'
 
     word_to_idx = {w: idx for (idx, w) in enumerate(read_vocab(vocab_path))}
 
