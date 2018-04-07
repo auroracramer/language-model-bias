@@ -9,7 +9,7 @@ from torch.autograd import Variable
 import data_v3
 import model
 import preprocess
-import jams
+#import jams
 import os
 import pandas as pd
 from sklearn.model_selection import ShuffleSplit
