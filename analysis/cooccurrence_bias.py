@@ -3,6 +3,9 @@ from collections import Counter
 from scipy.stats import entropy
 from numpy.linalg import norm
 import numpy as np
+import spacy
+
+en = spacy.load('en')
 
 
 DEFAULT_MALE_NOUNS = {
