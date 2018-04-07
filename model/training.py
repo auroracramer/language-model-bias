@@ -1,9 +1,5 @@
 
 # coding: utf-8
-
-# In[145]:
-
-
 import argparse
 import time
 import math
@@ -22,9 +18,6 @@ import json
 
 import random
 seed = random.seed(20180330)
-
-
-# In[158]:
 
 
 parser = argparse.ArgumentParser(description='PyTorch Wikitext-2 RNN/LSTM Language Model')
@@ -63,9 +56,6 @@ parser.add_argument('--save', type=str,  default='model.pt',
 args = parser.parse_args()
 
 
-# In[4]:
-
-
 # Set the random seed manually for reproducibility.
 torch.manual_seed(args.seed)
 if torch.cuda.is_available():
@@ -73,9 +63,6 @@ if torch.cuda.is_available():
         print("WARNING: You have a CUDA device, so you should probably run with --cuda")
     else:
         torch.cuda.manual_seed(args.seed)
-
-
-# In[53]:
 
 
 def batchify(data, bsz):
@@ -90,13 +77,6 @@ def batchify(data, bsz):
     return data
 
 
-# In[54]:
-
-
-###############################################################################
-# Training code
-###############################################################################
-
 def repackage_hidden(h):
     #"""Wraps hidden states in new Variables, to detach them from their history."""
     if type(h) == Variable:
@@ -105,26 +85,11 @@ def repackage_hidden(h):
         return tuple(repackage_hidden(v) for v in h)
 
 
-# In[55]:
-
-
-# get_batch subdivides the source data into chunks of length args.bptt.
-# If source is equal to the example output of the batchify function, with
-# a bptt-limit of 2, we'd get the following two Variables for i = 0:
-# ┌ a g m s ┐ ┌ b h n t ┐
-# └ b h n t ┘ └ c i o u ┘
-# Note that despite the name of the function, the subdivison of data is not
-# done along the batch dimension (i.e. dimension 1), since that was handled
-# by the batchify function. The chunks are along dimension 0, corresponding
-# to the seq_len dimension in the LSTM.
 def get_batch(source, i, evaluation=False):
     seq_len = min(args.bptt, len(source) - 1 - i)
     data = Variable(source[i:i+seq_len], volatile=evaluation)
     target = Variable(source[i+1:i+1+seq_len].view(-1))
     return data, target
-
-
-# In[56]:
 
 
 def evaluate(data_source):
@@ -140,9 +105,6 @@ def evaluate(data_source):
         total_loss += len(data) * criterion(output_flat, targets).data
         hidden = repackage_hidden(hidden)
     return total_loss[0] / len(data_source)
-
-
-# In[57]:
 
 
 def train():
@@ -180,14 +142,8 @@ def train():
             start_time = time.time()
 
 
-# In[58]:
-
-
+            
 vocab = preprocess.read_vocab(os.path.join(args.data,'VOCAB.txt'))
-
-
-# In[69]:
-
 
 inds = jams.util.find_with_extension(args.data, 'bin')
 index_train = {}
@@ -198,10 +154,6 @@ for ind in inds:
     iteration += 1
 with open('ind_train.json', 'w') as fp:
     json.dump(index_train, fp)
-
-
-# In[157]:
-
 
 with open('ind_train.json', 'r') as fp:
     data = json.load(fp)
@@ -223,53 +175,22 @@ idx_train = idx_bigtrain.iloc[trains]
 idx_val = idx_bigtrain.iloc[vals]
 
 
-# In[147]:
-
-
-###############################################################################
 # Load data
-###############################################################################
 
 corpus = data_v3.Corpus('./data/bbc/data/', vocab, idx_train, idx_train, idx_train)
-# Starting from sequential data, batchify arranges the dataset into columns.
-# For instance, with the alphabet as the sequence and batch size 4, we'd get
-# ┌ a g m s ┐
-# │ b h n t │
-# │ c i o u │
-# │ d j p v │
-# │ e k q w │
-# └ f l r x ┘.
-# These columns are treated as independent by the model, which means that the
-# dependence of e. g. 'g' on 'f' can not be learned, but allows more efficient
-# batch processing.
-
-
-# In[155]:
-
-
 eval_batch_size = 10
 train_data = batchify(corpus.train, args.batch_size)
 val_data = batchify(corpus.valid, eval_batch_size)
 test_data = batchify(corpus.test, eval_batch_size)
 
 
-# In[ ]:
-
-
-###############################################################################
 # Build the model
-###############################################################################
-
 ntokens = len(corpus.dictionary)
 model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid, args.nlayers, args.dropout, args.tied)
 if args.cuda:
     model.cuda()
 
 criterion = nn.CrossEntropyLoss()
-
-
-# In[ ]:
-
 
 # Loop over epochs.
 lr = args.lr
@@ -308,4 +229,3 @@ print('=' * 89)
 print('| End of training | test loss {:5.2f} | test ppl {:8.2f}'.format(
     test_loss, math.exp(test_loss)))
 print('=' * 89)
-
