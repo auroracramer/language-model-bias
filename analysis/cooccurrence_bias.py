@@ -2,6 +2,7 @@ from preprocess import read_preprocessed_file, read_vocab
 from collections import Counter
 from scipy.stats import entropy
 from numpy.linalg import norm
+import os
 import numpy as np
 import spacy
 
