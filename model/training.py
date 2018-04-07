@@ -1,4 +1,3 @@
-
 # coding: utf-8
 import argparse
 import time
@@ -142,9 +141,11 @@ def train():
             start_time = time.time()
 
 
-            
+#load vocab            
 vocab = preprocess.read_vocab(os.path.join(args.data,'VOCAB.txt'))
 
+
+#create json file with indexed filename for following separation
 inds = jams.util.find_with_extension(args.data, 'bin')
 index_train = {}
 index_train['id'] = {}
@@ -155,10 +156,14 @@ for ind in inds:
 with open('ind_train.json', 'w') as fp:
     json.dump(index_train, fp)
 
+    
+#load the json file of indexed filename
 with open('ind_train.json', 'r') as fp:
     data = json.load(fp)
 idx_train_ = pd.DataFrame(data)
 
+
+#split test set
 splitter_tt = ShuffleSplit(n_splits=1, test_size=0.1,
                                random_state=seed)
 bigtrains, tests = next(splitter_tt.split(idx_train_['id'].keys()))
@@ -166,6 +171,8 @@ bigtrains, tests = next(splitter_tt.split(idx_train_['id'].keys()))
 idx_bigtrain = idx_train_.iloc[bigtrains]
 idx_test = idx_train_.iloc[tests]
 
+
+#split train, val sets
 splitter_tv = ShuffleSplit(n_splits=1, test_size=0.2,
                                random_state=seed)
 
@@ -175,8 +182,13 @@ idx_train = idx_bigtrain.iloc[trains]
 idx_val = idx_bigtrain.iloc[vals]
 
 
-# Load data
+#save idx_train, idx_val, idx_test for later use
+idx_train.to_json('idx_train.json')
+idx_val.to_json('idx_val.json')
+idx_test.to_json('idx_test.json')
 
+
+# Load data
 corpus = data_v3.Corpus('./data/bbc/data/', vocab, idx_train, idx_train, idx_train)
 eval_batch_size = 10
 train_data = batchify(corpus.train, args.batch_size)
