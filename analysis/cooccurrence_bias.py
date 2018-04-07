@@ -1,5 +1,8 @@
 from preprocess import read_preprocessed_file, read_vocab
 from collections import Counter
+from scipy.stats import entropy
+from numpy.linalg import norm
+import numpy as np
 
 
 DEFAULT_MALE_NOUNS = {
@@ -130,3 +133,29 @@ def compute_gender_cooccurrance_bias(female_cooccur, male_cooccur):
     bias_norm = bias_norm_sum / len(total_words)
 
     return bias, bias_norm
+
+
+def JSD(P, Q):
+    """
+    Compute Jensen-Shannon divergence
+    """
+    # Copied from https://stackoverflow.com/a/27432724/1260544
+    _P = P / norm(P, ord=1)
+    _Q = Q / norm(Q, ord=1)
+    _M = 0.5 * (_P + _Q)
+    return 0.5 * (entropy(_P, _M) + entropy(_Q, _M))
+
+
+def compute_gender_distribution_divergence(female_cooccur, male_cooccur):
+    """
+    Compute Jensen-Shannon divergence between the word probabilities conditioned
+    on male and female
+    """
+    female_count = sum(female_cooccur.values())
+    male_count = sum(male_cooccur.values())
+    total_words = (set(female_cooccur.keys()) | set(male_cooccur.keys()))
+
+    p_w_given_male = np.array([male_cooccur[k] / male_count for k in total_words])
+    p_w_given_female = np.array([female_cooccur[k] / male_count for k in total_words])
+
+    return JSD(p_w_given_female, p_w_given_male)
