@@ -4,10 +4,14 @@ from torch.autograd import Variable
 class RNNModel(nn.Module):
    # """Container module with an encoder, a recurrent module, and a decoder."""
 
-    def __init__(self, rnn_type, ntoken, ninp, nhid, nlayers, dropout=0.5, tie_weights=False):
+    def __init__(self, rnn_type, ntoken, ninp, nhid, nlayers, glove='Flase', glove_embs=None, dropout=0.5, tie_weights=False):
         super(RNNModel, self).__init__()
         self.drop = nn.Dropout(dropout)
-        self.encoder = nn.Embedding(ntoken, ninp)
+        if glove:
+            weight = glove_embs
+            self.encoder = nn.Embedding.from_pretrained(weight)
+        else:
+            self.encoder = nn.Embedding(ntoken, ninp)
         if rnn_type in ['LSTM', 'GRU']:
             self.rnn = getattr(nn, rnn_type)(ninp, nhid, nlayers, dropout=dropout)
         else:
@@ -30,15 +34,17 @@ class RNNModel(nn.Module):
                 raise ValueError('When using the tied flag, nhid must be equal to emsize')
             self.decoder.weight = self.encoder.weight
 
-        self.init_weights()
+        self.init_weights(glove)
 
         self.rnn_type = rnn_type
         self.nhid = nhid
         self.nlayers = nlayers
 
-    def init_weights(self):
+    def init_weights(self, glove='False'):
         initrange = 0.1
-        self.encoder.weight.data.uniform_(-initrange, initrange)
+        if not glove:
+            self.encoder.weight.data.uniform_(-initrange, initrange)
+            
         self.decoder.bias.data.fill_(0)
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
