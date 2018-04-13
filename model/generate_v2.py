@@ -13,15 +13,20 @@ import argparse
 import torch
 from torch.autograd import Variable
 
+
 import data_v3
 import json
 import pandas as pd
 import preprocess
 import os
 from sklearn.model_selection import ShuffleSplit
-import jams
 import random
 seed = random.seed(20180330)
+
+# HACK for now
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+import analysis.cooccurrence_bias as cb
 
 
 parser = argparse.ArgumentParser(description='PyTorch bbc Language Model')
@@ -35,6 +40,8 @@ parser.add_argument('--outf', type=str, default='generated.txt',
                     help='output file for generated text')
 parser.add_argument('--words', type=int, default='1000',
                     help='number of words to generate')
+parser.add_argument('--no-sentence-reset', action='store_true',
+                    help='do not reset the hidden state in between sentences')
 parser.add_argument('--seed', type=int, default=1111,
                     help='random seed')
 parser.add_argument('--cuda', action='store_true',
@@ -80,15 +87,43 @@ input = Variable(torch.rand(1, 1).mul(ntokens).long(), volatile=True)
 if args.cuda:
     input.data = input.data.cuda()
 
+sentences = []
+sent = []
+
 with open(args.outf, 'w') as outf:
     for i in range(args.words):
+
         output, hidden = model(input, hidden)
         word_weights = output.squeeze().data.div(args.temperature).exp().cpu()
         word_idx = torch.multinomial(word_weights, 1)[0]
         input.data.fill_(word_idx)
         word = corpus.dictionary.idx2word[word_idx]
+        sent.append(word)
 
-        outf.write(word + ('\n' if i % 20 == 19 else ' '))
+        buf = word
+        if (i + 1) % 20 == 0:
+            buf += '\n'
+        else:
+            buf += ' '
+        outf.write(buf)
+
+        if word == '<eos>':
+            if not args.no_sentence_reset:
+                hidden = model.init_hidden(1)
+            sentences.append(sent)
+            sent = []
 
         if i % args.log_interval == 0:
             print('| Generated {}/{} words'.format(i, args.words))
+
+if sent:
+    sentences.append(sent)
+
+# Compute bias metrics
+female_cooccur, male_cooccur = cb.get_sentence_list_gender_cooccurrences(sentences)
+bias, bias_norm = cb.compute_gender_cooccurrance_bias(female_cooccur, male_cooccur)
+gdd = cb.compute_gender_distribution_divergence(female_cooccur, male_cooccur)
+
+print('Gender Co-occurrence Bias: {}'.format(bias))
+print('Gender Co-occurrence Bias (normalized): {}'.format(bias_norm))
+print('Gender Distribution Divergence: {}'.format(gdd))
