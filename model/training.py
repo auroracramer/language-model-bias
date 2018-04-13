@@ -9,7 +9,7 @@ from torch.autograd import Variable
 import data_v3
 import model
 import preprocess
-#import jams
+# import jams
 import os
 import pandas as pd
 from sklearn.model_selection import ShuffleSplit
@@ -18,7 +18,6 @@ import json
 import random
 seed = random.seed(20180330)
 
-
 parser = argparse.ArgumentParser(description='PyTorch Wikitext-2 RNN/LSTM Language Model')
 parser.add_argument('--data', type=str, default='./data/bbc/',
                     help='location of the data corpus')
@@ -26,6 +25,10 @@ parser.add_argument('--model', type=str, default='LSTM',
                     help='type of recurrent net (RNN_TANH, RNN_RELU, LSTM, GRU)')
 parser.add_argument('--emsize', type=int, default=200,
                     help='size of word embeddings')
+parser.add_argument('--glove', action='store_true',
+                    help='use glove')
+parser.add_argument('--glove_path', type=str, default='/beegfs/sb6416/ds1012/glove/vectors_bbc_100.txt',
+                    help='using glove word embedding')
 parser.add_argument('--nhid', type=int, default=200,
                     help='number of hidden units per layer')
 parser.add_argument('--nlayers', type=int, default=2,
@@ -63,7 +66,6 @@ if torch.cuda.is_available():
     else:
         torch.cuda.manual_seed(args.seed)
 
-
 def batchify(data, bsz):
     # Work out how cleanly we can divide the dataset into bsz parts.
     nbatch = data.size(0) // bsz
@@ -75,7 +77,6 @@ def batchify(data, bsz):
         data = data.cuda()
     return data
 
-
 def repackage_hidden(h):
     #"""Wraps hidden states in new Variables, to detach them from their history."""
     if type(h) == Variable:
@@ -83,13 +84,11 @@ def repackage_hidden(h):
     else:
         return tuple(repackage_hidden(v) for v in h)
 
-
 def get_batch(source, i, evaluation=False):
     seq_len = min(args.bptt, len(source) - 1 - i)
     data = Variable(source[i:i+seq_len], volatile=evaluation)
     target = Variable(source[i+1:i+1+seq_len].view(-1))
     return data, target
-
 
 def evaluate(data_source):
     # Turn on evaluation mode which disables dropout.
@@ -105,6 +104,27 @@ def evaluate(data_source):
         hidden = repackage_hidden(hidden)
     return total_loss[0] / len(data_source)
 
+def load_glove_to_dict(path, emsize):
+    with open(path, 'r') as fp:
+        glove = fp.readlines() 
+    glove_dict = {}
+    for string in glove:
+        vec = string.split()
+        glove_dict[vec[0]] = []
+        for i in range(emsize):
+            glove_dict[vec[0]].append(float(vec[i+1]))
+    return glove_dict
+
+def glove_dict_to_tensor(word2idx_dict, glove_dict):
+    num_words = len(word2idx_dict)
+    emb_dim = len(list(glove_dict.values())[0])
+    glove_tensor = torch.FloatTensor(num_words, emb_dim)
+    
+    for word in word2idx_dict:
+        idx = word2idx_dict[word]
+        glove_tensor[idx] = torch.FloatTensor(glove_dict[word])
+        
+    return glove_tensor
 
 def train():
     # Turn on training mode which enables dropout.
@@ -140,29 +160,27 @@ def train():
             total_loss = 0
             start_time = time.time()
 
-
-#load vocab            
+#load vocab
 vocab = preprocess.read_vocab(os.path.join(args.data,'VOCAB.txt'))
-
 
 #create json file with indexed filename for following separation
 # inds = jams.util.find_with_extension(args.data, 'bin')
 inds = [os.path.join(args.data, x) for x in os.listdir(args.data) if x.endswith('bin')]
+
 index_train = {}
 index_train['id'] = {}
 iteration = 0
 for ind in inds:
     index_train['id'][iteration] = os.path.basename(ind)
     iteration += 1
+    
 with open('ind_train.json', 'w') as fp:
     json.dump(index_train, fp)
-
     
-#load the json file of indexed filename
+#load the json file of indexed filename    
 with open('ind_train.json', 'r') as fp:
     data = json.load(fp)
 idx_train_ = pd.DataFrame(data)
-
 
 #split test set
 splitter_tt = ShuffleSplit(n_splits=1, test_size=0.1,
@@ -171,7 +189,6 @@ bigtrains, tests = next(splitter_tt.split(idx_train_['id'].keys()))
 
 idx_bigtrain = idx_train_.iloc[bigtrains]
 idx_test = idx_train_.iloc[tests]
-
 
 #split train, val sets
 splitter_tv = ShuffleSplit(n_splits=1, test_size=0.2,
@@ -182,24 +199,29 @@ trains, vals = next(splitter_tv.split(idx_bigtrain['id'].keys()))
 idx_train = idx_bigtrain.iloc[trains]
 idx_val = idx_bigtrain.iloc[vals]
 
-
 #save idx_train, idx_val, idx_test for later use
 idx_train.to_json('idx_train.json')
 idx_val.to_json('idx_val.json')
 idx_test.to_json('idx_test.json')
 
-
 # Load data
-corpus = data_v3.Corpus('./data/bbc/data/', vocab, idx_train, idx_train, idx_train)
+corpus = data_v3.Corpus(os.path.join(args.data,'data'), vocab, idx_train, idx_val, idx_test)
+
 eval_batch_size = 10
 train_data = batchify(corpus.train, args.batch_size)
 val_data = batchify(corpus.valid, eval_batch_size)
 test_data = batchify(corpus.test, eval_batch_size)
 
 
+#load glove embeddings to tensor
+# glove_dict = load_glove_to_dict(args.glove_path, args.emsize)
+# glove_tensor = glove_dict_to_tensor(corpus.dictionary.word2idx, glove_dict)
+
+
 # Build the model
 ntokens = len(corpus.dictionary)
-model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid, args.nlayers, args.dropout, args.tied)
+# model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid, args.nlayers, args.glove, glove_tensor, args.dropout, args.tied)
+model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid, args.nlayers, args.glove, args.dropout, args.tied)
 if args.cuda:
     model.cuda()
 
@@ -242,3 +264,4 @@ print('=' * 89)
 print('| End of training | test loss {:5.2f} | test ppl {:8.2f}'.format(
     test_loss, math.exp(test_loss)))
 print('=' * 89)
+
