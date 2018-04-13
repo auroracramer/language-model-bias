@@ -165,7 +165,7 @@ vocab = preprocess.read_vocab(os.path.join(args.data,'VOCAB.txt'))
 
 #create json file with indexed filename for following separation
 # inds = jams.util.find_with_extension(args.data, 'bin')
-inds = [os.path.join(args.data, x) for x in os.listdir(args.data) if x.endswith('bin')]
+inds = [os.path.join(args.data, 'data', x) for x in os.listdir(os.path.join(args.data, 'data')) if x.endswith('bin')]
 
 index_train = {}
 index_train['id'] = {}
