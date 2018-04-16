@@ -107,13 +107,7 @@ def equalize(male, female,model, male_bias, female_bias):
 
 
 def build_glove_dictionary(glove_file):
-    """
-        builds a dictionary based on the glove model.
-        http://nlp.stanford.edu/projects/glove/
-        dictionary will have the form of key = token, value = numpy array with the pretrained values
-        REALLY IMPORTANT the glove dataset. with the big one finds nearly everything....
-        smallest one...quite baaaaaad...
-    """
+    
     print ('building glove dictionary...')
     #glove_file = 'vectors_brown_100.txt'
     glove_dict = {}
