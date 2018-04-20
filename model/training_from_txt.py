@@ -57,6 +57,63 @@ if torch.cuda.is_available():
 
 corpus = data.Corpus(args.data)
 
+female_words = {
+    'woman', 'women', 'ladies', 'female', 'females', 'girl', 'girlfriend',
+    'girlfriends', 'girls', 'her', 'hers', 'lady', 'she', 'wife', 'wives'
+}
+
+male_words = {
+    'gentleman', 'man', 'men', 'gentlemen', 'male', 'males', 'boy', 'boyfriend',
+    'boyfriends', 'boys', 'he', 'his', 'him', 'husband', 'husbands'
+}
+
+gender_words = female_words | male_words
+
+word2idx = corpus.dictionary.word2idx
+D = pytorch.LongTensor([[word2idx[wf], word2idx[wm]]
+                         for wf, wm in zip(female_words, male_words)
+                         if wf in word2idx and wm in word2idx])
+
+# Probably will want to make this better
+N = pytorch.LongTensor([idx for w, idx in enumerate(word2idx.items())
+                        if w not in gender_words])
+
+eos_idx = corpus.dictionary.word2idx['<eos>']
+
+def bias_regularization(model, D, N, var_ratio, lmbda):
+    """
+    Compute bias regularization loss term
+    """
+    W = model.encoder.weight
+
+    X = None
+
+    # Compute variance for each defining set
+    for idx in range(D.size()[0]):
+        W_D_i = W[D[idx]]
+        mu_i = W_D_i.mean(dim=0).unsqueeze(0)
+        a = W_D_i - mu_i
+        cov = torch.mm(a.t, a)/W_D_i.size()[0]
+
+        if X is None:
+            X = cov
+        else:
+            X += cov
+
+    U, S, _ = torch.svd(X)
+
+    # Find k such that we capture 100*var_ratio% of the gender variance
+    var = S**2
+    norm_var = var/var.sum()
+    cumul_norm_var = torch.cumsum(norm_var, dim=0)
+    _, k = cumul_norm_var[cumul_norm_var >= var_ratio].min(dim=0)
+
+    # Get first k components to for gender subspace
+    B = U[:k].t # d x k
+
+    #                     (n x d)*(d x k)
+    return lmbda * torch.mm(W[N], B.t).norm(2) ** 2
+
 # Starting from sequential data, batchify arranges the dataset into columns.
 # For instance, with the alphabet as the sequence and batch size 4, we'd get
 # ┌ a g m s ┐
@@ -96,7 +153,7 @@ if torch.cuda.device_count() > 1:
     print("Let's use", torch.cuda.device_count(), "GPUs!")
     # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
     model = nn.DataParallel(model)
-    
+
 if args.cuda:
     model.cuda()
 
@@ -152,12 +209,12 @@ def train():
     total_loss = 0
     start_time = time.time()
     ntokens = len(corpus.dictionary)
-    
+
     if torch.cuda.device_count() > 1:
         hidden = model.module.init_hidden(args.batch_size)
     else:
         hidden = model.init_hidden(args.batch_size)
-        
+
     for batch, i in enumerate(range(0, train_data.size(0) - 1, args.bptt)):
         data, targets = get_batch(train_data, i)
         # Starting each batch, we detach the hidden state from how it was previously produced.

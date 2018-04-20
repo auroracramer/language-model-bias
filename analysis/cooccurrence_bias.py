@@ -1,10 +1,17 @@
+from multiprocessing import Pool
 from preprocess import read_preprocessed_file, read_vocab
 from collections import Counter
 from scipy.stats import entropy
 from numpy.linalg import norm
+import time
 import os
 import numpy as np
 import spacy
+import logging
+from log import init_console_logger
+
+LOGGER = logging.getLogger('bias')
+LOGGER.setLevel(logging.DEBUG)
 
 en = spacy.load('en')
 
@@ -68,6 +75,14 @@ def get_sentence_gender_cooccurrences(sent, target_pos=None, female_nouns=None, 
     return female_cooccur, male_cooccur
 
 
+def file_worker(args):
+    sentences, target_pos, female_nouns, male_nouns = args
+    return get_sentence_list_gender_cooccurrences(sentences, target_pos=target_pos,
+                                                  female_nouns=female_nouns,
+                                                  male_nouns=male_nouns)
+
+
+
 def get_sentence_list_gender_cooccurrences(sentences, target_pos=None,
                                            female_nouns=None, male_nouns=None):
     """
@@ -75,12 +90,11 @@ def get_sentence_list_gender_cooccurrences(sentences, target_pos=None,
     """
     female_cooccur = Counter()
     male_cooccur = Counter()
+
     for sent in sentences:
         female_cooccur_sent, male_cooccur_sent \
             = get_sentence_gender_cooccurrences(sent, target_pos=target_pos,
-                                                female_nouns=female_nouns,
-                                                male_nouns=male_nouns)
-
+                female_nouns=female_nouns, male_nouns=male_nouns)
         female_cooccur += female_cooccur_sent
         male_cooccur += male_cooccur_sent
 
@@ -88,7 +102,8 @@ def get_sentence_list_gender_cooccurrences(sentences, target_pos=None,
 
 
 def get_dataset_gender_cooccurrences(data_dir, vocab, target_pos=None,
-                                     female_nouns=None, male_nouns=None):
+                                     female_nouns=None, male_nouns=None,
+                                     n_jobs=1, verbose=False):
     """
     Get gender cooccurrences for a preprocessed dataset
     """
@@ -99,15 +114,29 @@ def get_dataset_gender_cooccurrences(data_dir, vocab, target_pos=None,
     female_cooccur = Counter()
     male_cooccur = Counter()
 
-    for fname in os.listdir(data_dir):
-        fpath = os.path.join(data_dir, fname)
-        # Read file
-        sentences = read_preprocessed_file(fpath, vocab)
-        female_cooccur_file, male_cooccur_file \
-            = get_sentence_list_gender_cooccurrences(sentences, target_pos=target_pos)
+    filepaths = [os.path.join(data_dir, fname) for fname in os.listdir(data_dir)]
+    worker_args = ((read_preprocessed_file(fpath, vocab), target_pos,
+                    female_nouns, male_nouns)
+                   for fpath in filepaths)
 
-        female_cooccur += female_cooccur_file
-        male_cooccur += male_cooccur_file
+    num_files = len(filepaths)
+    LOGGER.info("Processing {} files.".format(num_files))
+
+    update_interval = max(num_files // 1000, 1)
+    pool = Pool(n_jobs)
+
+    last_time = time.time()
+
+    for idx, res in enumerate(pool.imap_unordered(file_worker, worker_args)):
+        female_cooccur_sent, male_cooccur_sent = res
+        female_cooccur += female_cooccur_sent
+        male_cooccur += male_cooccur_sent
+
+        if verbose and ((idx+1) % update_interval == 0):
+            curr_time = time.time()
+            LOGGER.info("| Processed {}/{} files. Batch took {}s.".format(
+                idx+1, num_files, curr_time - last_time))
+            last_time = curr_time
 
     return female_cooccur, male_cooccur
 

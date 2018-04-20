@@ -43,6 +43,13 @@ parser.add_argument('--batch_size', type=int, default=20, metavar='N',
                     help='batch size')
 parser.add_argument('--bptt', type=int, default=35,
                     help='sequence length')
+parser.add_argument('--bias_reg', action='store_true',
+                    help='use bias regularization')
+parser.add_argument('--bias_reg_factor', type=float, default=1.0,
+                    help='bias regularization loss weight factor')
+parser.add_argument('--bias_reg_var_ratio', type=float, default=0.5,
+                    help=('ratio of variance used for determining size of gender'
+                          'subspace for bias regularization'))
 parser.add_argument('--dropout', type=float, default=0.2,
                     help='dropout applied to layers (0 = no dropout)')
 parser.add_argument('--tied', action='store_true',
@@ -106,7 +113,7 @@ def evaluate(data_source):
 
 def load_glove_to_dict(path, emsize):
     with open(path, 'r') as fp:
-        glove = fp.readlines() 
+        glove = fp.readlines()
     glove_dict = {}
     for string in glove:
         vec = string.split()
@@ -119,12 +126,13 @@ def glove_dict_to_tensor(word2idx_dict, glove_dict):
     num_words = len(word2idx_dict)
     emb_dim = len(list(glove_dict.values())[0])
     glove_tensor = torch.FloatTensor(num_words, emb_dim)
-    
+
     for word in word2idx_dict:
         idx = word2idx_dict[word]
         glove_tensor[idx] = torch.FloatTensor(glove_dict[word])
-        
+
     return glove_tensor
+
 
 def train():
     # Turn on training mode which enables dropout.
@@ -143,12 +151,20 @@ def train():
         loss = criterion(output.view(-1, ntokens), targets)
         loss.backward()
 
+        # TODO: Construct D, N
+        if args.bias_reg:
+            bias_loss = bias_regularization(model, D, N, args.bias_reg_var_ratio,
+                                            args.bias_reg_factor)
+            bias_loss.backward()
+
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
         torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
         for p in model.parameters():
             p.data.add_(-lr, p.grad.data)
 
         total_loss += loss.data
+        if args.bias_reg:
+            total_loss += bias_loss.data
 
         if batch % args.log_interval == 0 and batch > 0:
             cur_loss = total_loss[0] / args.log_interval
@@ -173,11 +189,11 @@ iteration = 0
 for ind in inds:
     index_train['id'][iteration] = os.path.basename(ind)
     iteration += 1
-    
+
 with open('ind_train.json', 'w') as fp:
     json.dump(index_train, fp)
-    
-#load the json file of indexed filename    
+
+#load the json file of indexed filename
 with open('ind_train.json', 'r') as fp:
     data = json.load(fp)
 idx_train_ = pd.DataFrame(data)
@@ -206,6 +222,59 @@ idx_test.to_json('idx_test.json')
 
 # Load data
 corpus = data_v3.Corpus(os.path.join(args.data,'data'), vocab, idx_train, idx_val, idx_test)
+
+female_words = {
+    'woman', 'women', 'ladies', 'female', 'females', 'girl', 'girlfriend',
+    'girlfriends', 'girls', 'her', 'hers', 'lady', 'she', 'wife', 'wives'
+}
+
+male_words = {
+    'gentleman', 'man', 'men', 'gentlemen', 'male', 'males', 'boy', 'boyfriend',
+    'boyfriends', 'boys', 'he', 'his', 'him', 'husband', 'husbands'
+}
+
+gender_words = female_words | male_words
+
+word2idx = corpus.dictionary.word2idx
+D = pytorch.LongTensor([[word2idx[wf], word2idx[wm]]
+                         for wf, wm in zip(female_words, male_words)
+                         if wf in word2idx and wm in word2idx])
+
+# Probably will want to make this better
+N = pytorch.LongTensor([idx for w, idx in enumerate(word2idx.items())
+                        if w not in gender_words])
+
+eos_idx = corpus.dictionary.word2idx['<eos>']
+
+def bias_regularization(model, D, N, var_ratio, lmbda):
+    W = model.encoder.weight
+
+    X = None
+
+    for idx in range(D.shape[0]):
+        W_D_i = W[D[idx]]
+        mu_i = W_D_i.mean(dim=0).unsqueeze(0)
+        a = W_D_i - mu_i
+        cov = torch.mm(a.t, a)/2
+
+        if X is None:
+            X = cov
+        else:
+            X += cov
+
+    U, S, _ = torch.svd(X)
+
+    # Find k such that we capture 100*var_ratio% of the gender variance
+    var = S**2
+    norm_var = var/var.sum()
+    cumul_norm_var = torch.cumsum(norm_var, dim=0)
+    _, k = cumul_norm_var[cumul_norm_var >= var_ratio].min(dim=0)
+
+    B = U[:k].t # d x k
+
+    #                     (n x d)*(d x k)
+    return lmbda * torch.mm(W[N], B.t).norm(2) ** 2
+
 
 eval_batch_size = 10
 train_data = batchify(corpus.train, args.batch_size)
