@@ -267,6 +267,7 @@ def write_to_json(sentences, target_pos = None):
             if (w.pos_) == 'ADV':
                 adj = w.text
                 adva.append(w.text)
+
                 #print(adva)
                 tmp = { w.pos_ : adva }
                 data[index].update(tmp) 
@@ -283,7 +284,75 @@ def write_to_json(sentences, target_pos = None):
     with open('data.json','w') as fp:
         json.dump(data,fp)                        
       
+
+
+
+
+
+
+
+
+
               
+from sklearn.decomposition import PCA
+
+def normalize(model):
+    
+    words = sorted([w for w in model.vocab], key=lambda w: model.vocab[w].index)
+    vecs = [model[w] for w in words]
+    vecs = np.array(vecs)
+    print(vecs.shape)
+    words = words
+    index = {w: i for i, w in enumerate(words)}
+    norms = np.linalg.norm(vecs, axis=1)
+    
+    return 
+
+
+
+def debias(model, defining_sets):
+    
+    d=[]
+    n = len(defining_sets)
+    for s in defining_sets:
+        D = int(len(s))
+        vec_mid = np.array(get_unit_vector(model.get_vector(s[0]))-get_unit_vector(model.get_vector(s[1])))/D
+              
+        d = np.append(d, get_unit_vector(model.get_vector(s[0]) - vec_mid))
+        d = np.append(d, get_unit_vector(model.get_vector(s[1]) - vec_mid))
+        #print(len(d))
+    m  = int(len(d)/(2*n))
+    C=d.reshape(m,2*n)
+    #print(C.shape)
+
+    pca = PCA(n_components=2, svd_solver='full')
+    pca.fit(C) 
+    #print(pca.explained_variance_ratio_)
+    #print(pca.singular_values_)
+    bias_v = pca.components_
+
+    
+def neutralize(v, bias_v):
+    v_neutral = v - v*v.dot(bias_v)/(bias_v.dot(bias_v))
+    return v_neutral
+    
+    
+   
+    
+def equalize(equality_set, bias_v):
+    E  = int(len(equality_set))
+    mid = []
+    for s in equality_set:
+        mid += []
+    mid = mid/E
+    
+    for s in equality_set:
+        v = s - mid*mid.dot(bias_v)/(bias_v.dot(bias_v))
+        s = v  + (s-v)*math.sqrt(1-v.dot(v))/(s-v).dot(s-v)
+        
+    
+  
+
        
        
        
