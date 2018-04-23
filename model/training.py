@@ -151,7 +151,6 @@ def train():
         loss = criterion(output.view(-1, ntokens), targets)
         loss.backward()
 
-        # TODO: Construct D, N
         if args.bias_reg:
             bias_loss = bias_regularization(model, D, N, args.bias_reg_var_ratio,
                                             args.bias_reg_factor)
@@ -236,26 +235,33 @@ male_words = {
 gender_words = female_words | male_words
 
 word2idx = corpus.dictionary.word2idx
-D = pytorch.LongTensor([[word2idx[wf], word2idx[wm]]
-                         for wf, wm in zip(female_words, male_words)
-                         if wf in word2idx and wm in word2idx])
+D = torch.LongTensor([[word2idx[wf], word2idx[wm]]
+                       for wf, wm in zip(female_words, male_words)
+                       if wf in word2idx and wm in word2idx])
 
 # Probably will want to make this better
-N = pytorch.LongTensor([idx for w, idx in enumerate(word2idx.items())
-                        if w not in gender_words])
+N = torch.LongTensor([idx for w, idx in word2idx.items() if w not in gender_words])
+
+if args.cuda:
+    D = D.cuda()
+    N = N.cuda()
 
 eos_idx = corpus.dictionary.word2idx['<eos>']
 
 def bias_regularization(model, D, N, var_ratio, lmbda):
+    """
+    Compute bias regularization loss term
+    """
     W = model.encoder.weight
 
     X = None
 
-    for idx in range(D.shape[0]):
+    # Compute variance for each defining set
+    for idx in range(D.size()[0]):
         W_D_i = W[D[idx]]
         mu_i = W_D_i.mean(dim=0).unsqueeze(0)
         a = W_D_i - mu_i
-        cov = torch.mm(a.t, a)/2
+        cov = torch.matmul(a.t(), a)/W_D_i.size()[0]
 
         if X is None:
             X = cov
@@ -270,10 +276,10 @@ def bias_regularization(model, D, N, var_ratio, lmbda):
     cumul_norm_var = torch.cumsum(norm_var, dim=0)
     _, k = cumul_norm_var[cumul_norm_var >= var_ratio].min(dim=0)
 
-    B = U[:k].t # d x k
+    B = U[:k].t() # d x k
 
     #                     (n x d)*(d x k)
-    return lmbda * torch.mm(W[N], B.t).norm(2) ** 2
+    return lmbda * torch.matmul(W[N], B.t()).norm(2) ** 2
 
 
 eval_batch_size = 10

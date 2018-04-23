@@ -4,7 +4,7 @@ from torch.autograd import Variable
 class RNNModel(nn.Module):
    # """Container module with an encoder, a recurrent module, and a decoder."""
 
-    def __init__(self, rnn_type, ntoken, ninp, nhid, nlayers, glove='Flase', glove_embs=None, dropout=0.5, tie_weights=False):
+    def __init__(self, rnn_type, ntoken, ninp, nhid, nlayers, glove=False, glove_embs=None, dropout=0.5, tie_weights=False):
         super(RNNModel, self).__init__()
         self.drop = nn.Dropout(dropout)
         if glove:
@@ -40,11 +40,11 @@ class RNNModel(nn.Module):
         self.nhid = nhid
         self.nlayers = nlayers
 
-    def init_weights(self, glove='False'):
+    def init_weights(self, glove=False):
         initrange = 0.1
         if not glove:
             self.encoder.weight.data.uniform_(-initrange, initrange)
-            
+
         self.decoder.bias.data.fill_(0)
         self.decoder.weight.data.uniform_(-initrange, initrange)
 

@@ -29,6 +29,13 @@ parser.add_argument('--batch_size', type=int, default=20, metavar='N',
                     help='batch size')
 parser.add_argument('--bptt', type=int, default=35,
                     help='sequence length')
+parser.add_argument('--bias_reg', action='store_true',
+                    help='use bias regularization')
+parser.add_argument('--bias_reg_factor', type=float, default=1.0,
+                    help='bias regularization loss weight factor')
+parser.add_argument('--bias_reg_var_ratio', type=float, default=0.5,
+                    help=('ratio of variance used for determining size of gender'
+                          'subspace for bias regularization'))
 parser.add_argument('--dropout', type=float, default=0.2,
                     help='dropout applied to layers (0 = no dropout)')
 parser.add_argument('--tied', action='store_true',
@@ -70,13 +77,16 @@ male_words = {
 gender_words = female_words | male_words
 
 word2idx = corpus.dictionary.word2idx
-D = pytorch.LongTensor([[word2idx[wf], word2idx[wm]]
-                         for wf, wm in zip(female_words, male_words)
-                         if wf in word2idx and wm in word2idx])
+D = torch.LongTensor([[word2idx[wf], word2idx[wm]]
+                       for wf, wm in zip(female_words, male_words)
+                       if wf in word2idx and wm in word2idx])
 
 # Probably will want to make this better
-N = pytorch.LongTensor([idx for w, idx in enumerate(word2idx.items())
-                        if w not in gender_words])
+N = torch.LongTensor([idx for w, idx in word2idx.items() if w not in gender_words])
+
+if args.cuda:
+    D = D.cuda()
+    N = N.cuda()
 
 eos_idx = corpus.dictionary.word2idx['<eos>']
 
@@ -93,7 +103,7 @@ def bias_regularization(model, D, N, var_ratio, lmbda):
         W_D_i = W[D[idx]]
         mu_i = W_D_i.mean(dim=0).unsqueeze(0)
         a = W_D_i - mu_i
-        cov = torch.mm(a.t, a)/W_D_i.size()[0]
+        cov = torch.matmul(a.t(), a)/W_D_i.size()[0]
 
         if X is None:
             X = cov
@@ -109,10 +119,10 @@ def bias_regularization(model, D, N, var_ratio, lmbda):
     _, k = cumul_norm_var[cumul_norm_var >= var_ratio].min(dim=0)
 
     # Get first k components to for gender subspace
-    B = U[:k].t # d x k
+    B = U[:k.data[0]+1].t() # d x k
 
     #                     (n x d)*(d x k)
-    return lmbda * torch.mm(W[N], B.t).norm(2) ** 2
+    return lmbda * torch.matmul(W[N], B).norm(2) ** 2
 
 # Starting from sequential data, batchify arranges the dataset into columns.
 # For instance, with the alphabet as the sequence and batch size 4, we'd get
@@ -147,7 +157,7 @@ test_data = batchify(corpus.test, eval_batch_size)
 ###############################################################################
 
 ntokens = len(corpus.dictionary)
-model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid, args.nlayers, args.dropout, args.tied)
+model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid, args.nlayers, dropout=args.dropout, tie_weights=args.tied)
 
 if torch.cuda.device_count() > 1:
     print("Let's use", torch.cuda.device_count(), "GPUs!")
@@ -224,6 +234,11 @@ def train():
         output, hidden = model(data, hidden)
         loss = criterion(output.view(-1, ntokens), targets)
         loss.backward()
+
+        if args.bias_reg:
+            bias_loss = bias_regularization(model, D, N, args.bias_reg_var_ratio,
+                                            args.bias_reg_factor)
+            bias_loss.backward()
 
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
         torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
