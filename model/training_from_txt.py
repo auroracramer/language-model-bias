@@ -111,9 +111,6 @@ def bias_regularization(model, D, N, var_ratio, lmbda):
         C.append(((u - v)/2).view(1, -1))
     C = torch.cat(C, dim=0)
 
-    # Remove the mean for SVD
-    C = C - C.mean(dim=0).expand_as(C)
-
     # Get prinipal components
     U, S, V = torch.svd(C)
 
