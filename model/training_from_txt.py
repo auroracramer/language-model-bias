@@ -96,30 +96,30 @@ def bias_regularization(model, D, N, var_ratio, lmbda):
     """
     W = model.encoder.weight
 
-    X = None
+    X = torch.Tensor()
 
     # Compute variance for each defining set
-    for idx in range(D.size()[0]):
+    for idx in range(D.size()[1]):
         W_D_i = W[D[idx]]
         mu_i = W_D_i.mean(dim=0).unsqueeze(0)
         a = W_D_i - mu_i
-        cov = torch.matmul(a.t(), a)/W_D_i.size()[0]
-
-        if X is None:
-            X = cov
-        else:
-            X += cov
-
+        X = torch.cat((X,a),0)
+         
+        
     U, S, _ = torch.svd(X)
 
     # Find k such that we capture 100*var_ratio% of the gender variance
     var = S**2
+    
+    """ this part is yet to be fixed 
     norm_var = var/var.sum()
     cumul_norm_var = torch.cumsum(norm_var, dim=0)
     _, k = cumul_norm_var[cumul_norm_var >= var_ratio].min(dim=0)
-
+   
+    """
+    
     # Get first k components to for gender subspace
-    B = U[:k.data[0]+1].t() # d x k
+    B = U[:k].t() # d x k
 
     #                     (n x d)*(d x k)
     return lmbda * torch.matmul(W[N], B).norm(2) ** 2
