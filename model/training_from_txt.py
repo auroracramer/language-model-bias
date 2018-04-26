@@ -122,10 +122,10 @@ def bias_regularization(model, D, N, var_ratio, lmbda):
 
     norm_var = var/var.sum()
     cumul_norm_var = torch.cumsum(norm_var, dim=0)
-    _, k = cumul_norm_var[cumul_norm_var >= var_ratio].min(dim=0)
+    _, k_idx = cumul_norm_var[cumul_norm_var >= var_ratio].min(dim=0)
 
     # Get first k components to for gender subspace
-    B = V[:, :k.data[0]]
+    B = V[:, :k_idx.data[0]+1]
     loss = torch.matmul(W[N], B).norm(2) ** 2
 
     return lmbda * loss
