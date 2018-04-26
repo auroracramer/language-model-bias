@@ -68,17 +68,17 @@ if torch.cuda.is_available():
 
 corpus = data.Corpus(args.data)
 
-female_words = {
-    'woman', 'women', 'ladies', 'female', 'females', 'girl', 'girlfriend',
-    'girlfriends', 'girls', 'her', 'hers', 'lady', 'she', 'wife', 'wives'
-}
+female_words = [
+    'lady', 'woman', 'women', 'ladies', 'female', 'females', 'girl', 'girlfriend',
+    'girlfriends', 'girls', 'her', 'hers', 'she', 'wife', 'wives'
+]
 
-male_words = {
+male_words = [
     'gentleman', 'man', 'men', 'gentlemen', 'male', 'males', 'boy', 'boyfriend',
     'boyfriends', 'boys', 'he', 'his', 'him', 'husband', 'husbands'
-}
+]
 
-gender_words = female_words | male_words
+gender_words = set(female_words) | set(male_words)
 
 word2idx = corpus.dictionary.word2idx
 D = torch.LongTensor([[word2idx[wf], word2idx[wm]]
