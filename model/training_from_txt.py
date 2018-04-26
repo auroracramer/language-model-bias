@@ -3,7 +3,9 @@ import time
 import math
 import torch
 import torch.nn as nn
+import torch.optim as optim
 from torch.autograd import Variable
+import numpy as np
 
 import data
 import model
@@ -29,6 +31,8 @@ parser.add_argument('--batch_size', type=int, default=20, metavar='N',
                     help='batch size')
 parser.add_argument('--bptt', type=int, default=35,
                     help='sequence length')
+parser.add_argument('--weight_decay', type=float, default=1e-5,
+                    help='weight decay factor')
 parser.add_argument('--bias_reg', action='store_true',
                     help='use bias regularization')
 parser.add_argument('--bias_reg_factor', type=float, default=1.0,
@@ -90,39 +94,42 @@ if args.cuda:
 
 eos_idx = corpus.dictionary.word2idx['<eos>']
 
+
 def bias_regularization(model, D, N, var_ratio, lmbda):
     """
     Compute bias regularization loss term
     """
     W = model.encoder.weight
+    W /= model.encoder.weight.norm(2, dim=1).view(-1, 1)
 
-    X = torch.Tensor()
+    C = []
+    # Stack all of the differences between the gender pairs
+    for idx in range(D.size()[0]):
+        idxs = D[idx].view(-1)
+        u = W[idxs[0],:]
+        v = W[idxs[1],:]
+        C.append(((u - v)/2).view(1, -1))
+    C = torch.cat(C, dim=0)
 
-    # Compute variance for each defining set
-    for idx in range(D.size()[1]):
-        W_D_i = W[D[idx]]
-        mu_i = W_D_i.mean(dim=0).unsqueeze(0)
-        a = W_D_i - mu_i
-        X = torch.cat((X,a),0)
-         
-        
-    U, S, _ = torch.svd(X)
+    # Remove the mean for SVD
+    C = C - C.mean(dim=0).expand_as(C)
+
+    # Get prinipal components
+    U, S, V = torch.svd(C)
 
     # Find k such that we capture 100*var_ratio% of the gender variance
     var = S**2
-    
-    """ this part is yet to be fixed 
+
     norm_var = var/var.sum()
     cumul_norm_var = torch.cumsum(norm_var, dim=0)
     _, k = cumul_norm_var[cumul_norm_var >= var_ratio].min(dim=0)
-   
-    """
-    
-    # Get first k components to for gender subspace
-    B = U[:k].t() # d x k
 
-    #                     (n x d)*(d x k)
-    return lmbda * torch.matmul(W[N], B).norm(2) ** 2
+    # Get first k components to for gender subspace
+    B = V[:, :k.data[0]]
+    loss = torch.matmul(W[N], B).norm(2) ** 2
+
+    return lmbda * loss
+
 
 # Starting from sequential data, batchify arranges the dataset into columns.
 # For instance, with the alphabet as the sequence and batch size 4, we'd get
@@ -220,6 +227,9 @@ def train():
     start_time = time.time()
     ntokens = len(corpus.dictionary)
 
+    optimizer = optim.Adam(model.parameters(), lr=lr,
+                           weight_decay=args.weight_decay)
+
     if torch.cuda.device_count() > 1:
         hidden = model.module.init_hidden(args.batch_size)
     else:
@@ -236,14 +246,18 @@ def train():
         loss.backward()
 
         if args.bias_reg:
+
             bias_loss = bias_regularization(model, D, N, args.bias_reg_var_ratio,
                                             args.bias_reg_factor)
             bias_loss.backward()
 
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
         torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
-        for p in model.parameters():
-            p.data.add_(-lr, p.grad.data)
+        optimizer.step()
+
+        # Normalize weights
+        model.encoder.weight.data.div_(model.encoder.weight.data.norm(2, dim=1).view(-1, 1))
+
 
         total_loss += loss.data
 
@@ -277,9 +291,11 @@ try:
             with open(args.save, 'wb') as f:
                 torch.save(model, f)
             best_val_loss = val_loss
+        """
         else:
             # Anneal the learning rate if no improvement has been seen in the validation dataset.
             lr /= 4.0
+        """
 except KeyboardInterrupt:
     print('-' * 89)
     print('Exiting from training early')
