@@ -10,15 +10,14 @@ import multiprocessing as mp
 LOGGER = logging.getLogger('bias scores')
 LOGGER.setLevel(logging.DEBUG)
 
-
 DEFAULT_MALE_NOUNS = {
-    'gentleman', 'man', 'men', 'gentlemen', 'male', 'males', 'boy', 'boyfriend','mr',
-    'boyfriends', 'boys', 'he', 'his', 'him', 'husband', 'husbands', 'son' , 'sons'
+    'gentleman', 'man', 'men', 'gentlemen', 'male', 'males', 'boy', 'boyfriend','mr', 'actor', 'prince', 'king', 'kings','uncle', 'uncles', 'groom', 'widower', 'grandson', 'grandsons', 'grandfather','monk', 'grandpa',
+    'boyfriends', 'boys', 'he', 'his', 'him', 'husband', 'husbands', 'son' , 'sons', 'brother', 'brothers','himself'
 }
 
 DEFAULT_FEMALE_NOUNS = {
-    'woman', 'women', 'ladies', 'female', 'females', 'girl', 'girlfriend', 'ms','mrs',
-    'girlfriends', 'girls', 'her', 'hers', 'lady', 'she', 'wife', 'wives', 'daughter', 'daughters'
+    'woman', 'women', 'ladies', 'female', 'females', 'girl', 'girlfriend', 'ms','mrs','actress', 'princess', 'queen', 'queens','aunt', 'aunts', 'bride', 'blonde', 'widow', 'granddaughter', 'granddaughters', 'grandmother', 'nun', 'granny',
+    'girlfriends', 'girls', 'her', 'hers', 'lady', 'she', 'wife', 'wives', 'daughter', 'daughters', 'sister', 'sisters', 'herself'
 }
 
 def sortbybias(d):
