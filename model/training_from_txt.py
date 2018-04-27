@@ -23,6 +23,7 @@ parser.add_argument('--nlayers', type=int, default=2,
                     help='number of layers')
 parser.add_argument('--lr', type=float, default=20,
                     help='initial learning rate')
+parser.add_argument('--adam', action='store_true', help='If True, use ADAM optimizer')
 parser.add_argument('--clip', type=float, default=0.25,
                     help='gradient clipping')
 parser.add_argument('--epochs', type=int, default=40,
@@ -197,7 +198,11 @@ def repackage_hidden(h):
 
 def get_batch(source, i, evaluation=False):
     seq_len = min(args.bptt, len(source) - 1 - i)
-    data = Variable(source[i:i+seq_len], volatile=evaluation)
+    if evaluation:
+        with torch.no_grad():
+            data = Variable(source[i:i+seq_len])
+    else:
+        data = Variable(source[i:i+seq_len])
     target = Variable(source[i+1:i+1+seq_len].view(-1))
     return data, target
 
@@ -250,7 +255,11 @@ def train():
 
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
         torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
-        optimizer.step()
+        if args.adam:
+            optimizer.step()
+        else:
+            for p in model.parameters():
+                p.data.add_(-lr, p.grad.data)
 
         # Normalize weights
         model.encoder.weight.data.div_(model.encoder.weight.data.norm(2, dim=1).view(-1, 1))
@@ -288,11 +297,10 @@ try:
             with open(args.save, 'wb') as f:
                 torch.save(model, f)
             best_val_loss = val_loss
-        """
         else:
-            # Anneal the learning rate if no improvement has been seen in the validation dataset.
-            lr /= 4.0
-        """
+            if not args.adam:
+                # Anneal the learning rate if no improvement has been seen in the validation dataset.
+                lr /= 4.0
 except KeyboardInterrupt:
     print('-' * 89)
     print('Exiting from training early')
