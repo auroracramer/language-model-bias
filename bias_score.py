@@ -12,19 +12,43 @@ LOGGER.setLevel(logging.DEBUG)
 
 
 DEFAULT_MALE_NOUNS = {
-    'gentleman', 'man', 'men', 'gentlemen', 'male', 'males', 'boy', 'boyfriend',
-    'boyfriends', 'boys', 'he', 'his', 'him', 'husband', 'husbands'
+    'gentleman', 'man', 'men', 'gentlemen', 'male', 'males', 'boy', 'boyfriend','mr',
+    'boyfriends', 'boys', 'he', 'his', 'him', 'husband', 'husbands', 'son' , 'sons'
 }
 
 DEFAULT_FEMALE_NOUNS = {
-    'woman', 'women', 'ladies', 'female', 'females', 'girl', 'girlfriend',
-    'girlfriends', 'girls', 'her', 'hers', 'lady', 'she', 'wife', 'wives'
+    'woman', 'women', 'ladies', 'female', 'females', 'girl', 'girlfriend', 'ms','mrs',
+    'girlfriends', 'girls', 'her', 'hers', 'lady', 'she', 'wife', 'wives', 'daughter', 'daughters'
 }
 
 def sortbybias(d):
     
     d_s = sorted(d.items(), key = lambda t: t[1] )
     return d_s
+
+def gender_ratios_m_f(output_data_dir,file):
+    n = 0
+    tot = 0 
+    print("Gender Ratios...")
+    with open(file,'r') as f:
+        data = json.load(f)
+    bias_record = {}
+    for words in data:
+        if (data[words]['m']+data[words]['f']!=0 and data[words]['f']!=0 and data[words]['m']!=0):
+            score = data[words]['m']/(data[words]['m']+data[words]['f'])
+            tot+=score
+            n +=1
+            rec = {"b_score" : score}
+            data[words].update(rec)
+            bias_record[words] = json.dumps(data[words])
+    print(bias_record)
+    print(sortbybias(bias_record))
+    output_file = os.path.join(output_data_dir, 'biased_words_m_f')   
+    print("Bias_score: ", (tot/n))
+    with open(output_file,'w') as fp:
+        json.dump(bias_record,fp, sort_keys=True)   
+
+
 
 def gender_ratios(output_data_dir,file):
     print("Gender Ratios...")
@@ -112,6 +136,7 @@ def coccurrence_counts(dataset_dir, output_dir, window=7,num_workers=1):
         json.dump(data,fp)
     
     gender_ratios(output_data_dir,output_file)  
+    gender_ratios_m_f(output_data_dir,output_file) 
 
             
             
