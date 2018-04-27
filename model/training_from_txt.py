@@ -24,6 +24,8 @@ parser.add_argument('--nlayers', type=int, default=2,
 parser.add_argument('--lr', type=float, default=20,
                     help='initial learning rate')
 parser.add_argument('--adam', action='store_true', help='If True, use ADAM optimizer')
+parser.add_argument('--norm', action='store_true',
+                    help='If true, normalize embedding weights after every batch')
 parser.add_argument('--clip', type=float, default=0.25,
                     help='gradient clipping')
 parser.add_argument('--epochs', type=int, default=40,
@@ -261,8 +263,9 @@ def train():
             for p in model.parameters():
                 p.data.add_(-lr, p.grad.data)
 
-        # Normalize weights
-        model.encoder.weight.data.div_(model.encoder.weight.data.norm(2, dim=1).view(-1, 1))
+        if args.norm:
+            # Normalize weights
+            model.encoder.weight.data.div_(model.encoder.weight.data.norm(2, dim=1).view(-1, 1))
 
 
         total_loss += loss.data
