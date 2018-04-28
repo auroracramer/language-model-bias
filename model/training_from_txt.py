@@ -23,6 +23,8 @@ parser.add_argument('--nlayers', type=int, default=2,
                     help='number of layers')
 parser.add_argument('--lr', type=float, default=20,
                     help='initial learning rate')
+parser.add_argument('--patience', type=int, default=-1,
+                    help='Early stopping patience. If -1, early stopping is not used')
 parser.add_argument('--adam', action='store_true', help='If True, use ADAM optimizer')
 parser.add_argument('--norm', action='store_true',
                     help='If true, normalize embedding weights after every batch')
@@ -283,6 +285,7 @@ def train():
 # Loop over epochs.
 lr = args.lr
 best_val_loss = None
+epochs_since_best_val_set = 0
 
 # At any point you can hit Ctrl + C to break out of training early.
 try:
@@ -300,7 +303,14 @@ try:
             with open(args.save, 'wb') as f:
                 torch.save(model, f)
             best_val_loss = val_loss
+            epochs_since_best_val_set = 0
         else:
+            # Early stopping
+            epochs_since_best_val_set += 1
+            if args.patience > 0 and epochs_since_best_val_set >= args.patience:
+                print("Early stopping reached")
+                break
+
             if not args.adam:
                 # Anneal the learning rate if no improvement has been seen in the validation dataset.
                 lr /= 4.0
