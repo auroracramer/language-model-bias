@@ -6,6 +6,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
 import numpy as np
+from log import init_console_logger
+import logging
 
 import data
 import model
@@ -28,6 +30,8 @@ parser.add_argument('--patience', type=int, default=-1,
 parser.add_argument('--adam', action='store_true', help='If True, use ADAM optimizer')
 parser.add_argument('--norm', action='store_true',
                     help='If true, normalize embedding weights after every batch')
+parser.add_argument('--unnorm-bias', dest='norm_bias', action='store_false',
+                    help='If set, do not normalize embedding weights before computing bias score')
 parser.add_argument('--clip', type=float, default=0.25,
                     help='gradient clipping')
 parser.add_argument('--epochs', type=int, default=40,
@@ -59,11 +63,16 @@ parser.add_argument('--save', type=str,  default='model.pt',
                     help='path to save the final model')
 args = parser.parse_args()
 
+LOGGER = logging.getLogger('training')
+LOGGER.setLevel(logging.DEBUG)
+init_console_logger(LOGGER, verbose=True)
+
+
 # Set the random seed manually for reproducibility.
 torch.manual_seed(args.seed)
 if torch.cuda.is_available():
     if not args.cuda:
-        print("WARNING: You have a CUDA device, so you should probably run with --cuda")
+        LOGGER.info("WARNING: You have a CUDA device, so you should probably run with --cuda")
     else:
         torch.cuda.manual_seed(args.seed)
 
@@ -100,12 +109,13 @@ if args.cuda:
 eos_idx = corpus.dictionary.word2idx['<eos>']
 
 
-def bias_regularization(model, D, N, var_ratio, lmbda):
+def bias_regularization(model, D, N, var_ratio, lmbda, norm=True):
     """
     Compute bias regularization loss term
     """
     W = model.encoder.weight
-    W /= model.encoder.weight.norm(2, dim=1).view(-1, 1)
+    if norm:
+        W /= model.encoder.weight.norm(2, dim=1).view(-1, 1)
 
     C = []
     # Stack all of the differences between the gender pairs
@@ -169,7 +179,7 @@ ntokens = len(corpus.dictionary)
 model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid, args.nlayers, dropout=args.dropout, tie_weights=args.tied)
 
 if torch.cuda.device_count() > 1:
-    print("Let's use", torch.cuda.device_count(), "GPUs!")
+    LOGGER.info("Let's use", torch.cuda.device_count(), "GPUs!")
     # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
     model = nn.DataParallel(model)
 
@@ -254,14 +264,25 @@ def train():
         if args.bias_reg:
 
             bias_loss = bias_regularization(model, D, N, args.bias_reg_var_ratio,
-                                            args.bias_reg_factor)
+                                            args.bias_reg_factor, norm=args.norm_bias)
             bias_loss.backward()
+
 
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
         torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
         if args.adam:
             optimizer.step()
         else:
+            if args.weight_decay:
+                l2_reg = None
+                for param in model.parameters():
+                    if l2_reg is None:
+                        l2_reg = torch.norm(param)
+                    else:
+                        l2_reg += torch.norm(param)
+                l2_reg = args.weight_decay * l2_reg
+                l2_reg.backward()
+
             for p in model.parameters():
                 p.data.add_(-lr, p.grad.data)
 
@@ -275,7 +296,7 @@ def train():
         if batch % args.log_interval == 0 and batch > 0:
             cur_loss = total_loss[0] / args.log_interval
             elapsed = time.time() - start_time
-            print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:02.2f} | ms/batch {:5.2f} | '
+            LOGGER.info('| epoch {:3d} | {:5d}/{:5d} batches | lr {:02.2f} | ms/batch {:5.2f} | '
                     'loss {:5.2f} | ppl {:8.2f}'.format(
                 epoch, batch, len(train_data) // args.bptt, lr,
                 elapsed * 1000 / args.log_interval, cur_loss, math.exp(cur_loss)))
@@ -293,11 +314,11 @@ try:
         epoch_start_time = time.time()
         train()
         val_loss = evaluate(val_data)
-        print('-' * 89)
-        print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
+        LOGGER.info('-' * 89)
+        LOGGER.info('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
                 'valid ppl {:8.2f}'.format(epoch, (time.time() - epoch_start_time),
                                            val_loss, math.exp(val_loss)))
-        print('-' * 89)
+        LOGGER.info('-' * 89)
         # Save the model if the validation loss is the best we've seen so far.
         if not best_val_loss or val_loss < best_val_loss:
             with open(args.save, 'wb') as f:
@@ -308,15 +329,15 @@ try:
             # Early stopping
             epochs_since_best_val_set += 1
             if args.patience > 0 and epochs_since_best_val_set >= args.patience:
-                print("Early stopping reached")
+                LOGGER.info("Early stopping reached")
                 break
 
             if not args.adam:
                 # Anneal the learning rate if no improvement has been seen in the validation dataset.
                 lr /= 4.0
 except KeyboardInterrupt:
-    print('-' * 89)
-    print('Exiting from training early')
+    LOGGER.info('-' * 89)
+    LOGGER.info('Exiting from training early')
 
 # Load the best saved model.
 with open(args.save, 'rb') as f:
@@ -324,8 +345,8 @@ with open(args.save, 'rb') as f:
 
 # Run on test data.
 test_loss = evaluate(test_data)
-print('=' * 89)
-print('| End of training | test loss {:5.2f} | test ppl {:8.2f}'.format(
+LOGGER.info('=' * 89)
+LOGGER.info('| End of training | test loss {:5.2f} | test ppl {:8.2f}'.format(
     test_loss, math.exp(test_loss)))
-print('=' * 89)
+LOGGER.info('=' * 89)
 
