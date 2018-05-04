@@ -40,7 +40,7 @@ parser.add_argument('--batch_size', type=int, default=20, metavar='N',
                     help='batch size')
 parser.add_argument('--bptt', type=int, default=35,
                     help='sequence length')
-parser.add_argument('--weight_decay', type=float, default=1e-5,
+parser.add_argument('--weight_decay', type=float, default=0,
                     help='weight decay factor')
 parser.add_argument('--bias_reg', action='store_true',
                     help='use bias regularization')
