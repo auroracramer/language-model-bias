@@ -277,9 +277,9 @@ def train():
                 l2_reg = None
                 for param in model.parameters():
                     if l2_reg is None:
-                        l2_reg = torch.norm(param)
+                        l2_reg = torch.norm(param.data)
                     else:
-                        l2_reg += torch.norm(param)
+                        l2_reg += torch.norm(param.data)
                 l2_reg = args.weight_decay * l2_reg
                 l2_reg.backward()
 
