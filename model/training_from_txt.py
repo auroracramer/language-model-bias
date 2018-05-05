@@ -4,7 +4,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.autograd import Variable
+from torch.autograd.variable import Variable
 import numpy as np
 from log import init_console_logger
 import logging
@@ -115,7 +115,7 @@ def bias_regularization(model, D, N, var_ratio, lmbda, norm=True):
     """
     W = model.encoder.weight
     if norm:
-        W /= model.encoder.weight.norm(2, dim=1).view(-1, 1)
+        W = W / model.encoder.weight.norm(2, dim=1).view(-1, 1)
 
     C = []
     # Stack all of the differences between the gender pairs
@@ -194,10 +194,10 @@ criterion = nn.CrossEntropyLoss()
 
 def repackage_hidden(h):
     #"""Wraps hidden states in new Variables, to detach them from their history."""
-    if type(h) == Variable:
-        return Variable(h.data)
-    else:
+    if type(h) == tuple:
         return tuple(repackage_hidden(v) for v in h)
+    else:
+        return Variable(h.data)
 
 
 # get_batch subdivides the source data into chunks of length args.bptt.
