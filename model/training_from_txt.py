@@ -276,11 +276,11 @@ def train():
             if args.weight_decay:
                 l2_reg = None
                 for param in model.parameters():
-                    val = param.data.view(-1).norm(p=2, dim=0)
+                    val = param.norm()
                     if l2_reg is None:
                         l2_reg = val
                     else:
-                        l2_reg += val
+                        l2_reg = l2_reg + val
                 l2_reg = args.weight_decay * l2_reg
                 l2_reg.backward()
 
