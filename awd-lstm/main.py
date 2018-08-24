@@ -72,6 +72,14 @@ parser.add_argument('--optimizer', type=str,  default='sgd',
                     help='optimizer to use (sgd, adam)')
 parser.add_argument('--when', nargs="+", type=int, default=[-1],
                     help='When (which epochs) to divide the learning rate by 10 - accepts multiple')
+parser.add_argument('--bias_reg', action='store_true',
+                    help='use bias regularization')
+parser.add_argument('--bias_reg_factor', type=float, default=1.0,
+                    help='bias regularization loss weight factor')
+parser.add_argument('--bias_reg_var_ratio', type=float, default=0.5,
+                    help=('ratio of variance used for determining size of gender'
+                          'subspace for bias regularization'))
+
 args = parser.parse_args()
 args.tied = True
 
@@ -278,14 +286,15 @@ def train():
         if args.alpha: loss = loss + sum(args.alpha * dropped_rnn_h.pow(2).mean() for dropped_rnn_h in dropped_rnn_hs[-1:])
         # Temporal Activation Regularization (slowness)
         if args.beta: loss = loss + sum(args.beta * (rnn_h[1:] - rnn_h[:-1]).pow(2).mean() for rnn_h in rnn_hs[-1:])
-        loss.backward()
+
 
 	if args.bias_reg:
 
             bias_loss = bias_regularization(model, D, N, args.bias_reg_var_ratio,
                                             args.bias_reg_factor, norm=args.norm_bias)
-            bias_loss.backward()
+	    loss = loss + bias_loss
 
+        loss.backward()
 
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
         if args.clip: torch.nn.utils.clip_grad_norm_(params, args.clip)
