@@ -79,7 +79,7 @@ parser.add_argument('--bias_reg_factor', type=float, default=1.0,
 parser.add_argument('--bias_reg_var_ratio', type=float, default=0.5,
                     help=('ratio of variance used for determining size of gender'
                           'subspace for bias regularization'))
-
+	
 args = parser.parse_args()
 args.tied = True
 
@@ -353,9 +353,9 @@ try:
                 model_save(args.save)
                 LOGGER.info('Saving Averaged!')
                 stored_loss = val_loss2
-		epochs_since_best_val_set = 0   #SB 
+		epochs_since_best_val_set = 0    
 	   
-    	    else:                               #SB
+    	    else:                               
             # Early stopping
                 epochs_since_best_val_set += 1
         	if args.patience > 0 and epochs_since_best_val_set >= args.patience:
@@ -375,6 +375,15 @@ try:
                 model_save(args.save)
                 LOGGER.info('Saving model (new best validation)')
                 stored_loss = val_loss
+		epochs_since_best_val_set = 0    
+	   
+    	    else:                               
+            # Early stopping
+                epochs_since_best_val_set += 1
+        	if args.patience > 0 and epochs_since_best_val_set >= args.patience:
+                	LOGGER.info("Early stopping reached")
+                	break
+
 
             if args.optimizer == 'sgd' and 't0' not in optimizer.param_groups[0] and (len(best_val_loss)>args.nonmono and val_loss > min(best_val_loss[:-args.nonmono])):
                 LOGGER.info('Switching to ASGD')
