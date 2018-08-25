@@ -342,17 +342,15 @@ try:
                     epoch, (time.time() - epoch_start_time), val_loss2, math.exp(val_loss2), val_loss2 / math.log(2)))
             LOGGER.info('-' * 89)
 
-
-  	    for prm in model.parameters():
+            for prm in model.parameters():
                 prm.data = tmp[prm].clone()
 
             if val_loss2 < stored_loss:
                 model_save(args.save)
                 LOGGER.info('Saving Averaged!')
                 stored_loss = val_loss2
-		        epochs_since_best_val_set = 0    
-	   
-    	    else:                               
+                epochs_since_best_val_set=0
+            else:                               
             # Early stopping
                 epochs_since_best_val_set += 1
         	    if args.patience > 0 and epochs_since_best_val_set >= args.patience:
@@ -372,9 +370,8 @@ try:
                 model_save(args.save)
                 LOGGER.info('Saving model (new best validation)')
                 stored_loss = val_loss
-		        epochs_since_best_val_set = 0    
-	   
-    	    else:                               
+                epochs_since_best_val_set = 0
+            else:                               
             # Early stopping
                 epochs_since_best_val_set += 1
         	    if args.patience > 0 and epochs_since_best_val_set >= args.patience:
