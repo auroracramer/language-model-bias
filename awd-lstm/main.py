@@ -353,12 +353,12 @@ try:
                 model_save(args.save)
                 LOGGER.info('Saving Averaged!')
                 stored_loss = val_loss2
-		epochs_since_best_val_set = 0    
+		        epochs_since_best_val_set = 0    
 	   
     	    else:                               
             # Early stopping
                 epochs_since_best_val_set += 1
-        	if args.patience > 0 and epochs_since_best_val_set >= args.patience:
+        	    if args.patience > 0 and epochs_since_best_val_set >= args.patience:
                 	LOGGER.info("Early stopping reached")
                 	break
 
@@ -375,12 +375,12 @@ try:
                 model_save(args.save)
                 LOGGER.info('Saving model (new best validation)')
                 stored_loss = val_loss
-		epochs_since_best_val_set = 0    
+		        epochs_since_best_val_set = 0    
 	   
     	    else:                               
             # Early stopping
                 epochs_since_best_val_set += 1
-        	if args.patience > 0 and epochs_since_best_val_set >= args.patience:
+        	    if args.patience > 0 and epochs_since_best_val_set >= args.patience:
                 	LOGGER.info("Early stopping reached")
                 	break
 
@@ -396,6 +396,7 @@ try:
                 optimizer.param_groups[0]['lr'] /= 10.
 
             best_val_loss.append(val_loss)
+
 
 except KeyboardInterrupt:
     LOGGER.info('-' * 89)
