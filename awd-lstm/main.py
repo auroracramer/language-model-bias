@@ -15,7 +15,7 @@ from utils import batchify, get_batch, repackage_hidden
 #parser.add_argument('--data', type=str, default='data/penn/',
  #                   help='location of the data corpus')
 parser = argparse.ArgumentParser(description='PyTorch Wikitext-2 RNN/LSTM Language Model')
-parser.add_argument('--data', type=str, default='/beegfs/yw3004/projects/language_bias/data/dailymail/subset/	',
+parser.add_argument('--data', type=str, default='/beegfs/yw3004/projects/language_bias/data/dailymail/subset/',
                     help='location of the data corpus')
 
 parser.add_argument('--model', type=str, default='LSTM',
@@ -68,6 +68,8 @@ parser.add_argument('--wdecay', type=float, default=1.2e-6,
                     help='weight decay applied to all weights')
 parser.add_argument('--resume', type=str,  default='',
                     help='path of model to resume')
+parser.add_argument('--unnorm-bias', dest='norm_bias', action='store_false',
+                    help='If set, do not normalize embedding weights before computing bias score')
 parser.add_argument('--optimizer', type=str,  default='sgd',
                     help='optimizer to use (sgd, adam)')
 parser.add_argument('--when', nargs="+", type=int, default=[-1],
@@ -370,7 +372,7 @@ try:
                 model_save(args.save)
                 LOGGER.info('Saving model (new best validation)')
                 stored_loss = val_loss
-                    epochs_since_best_val_set = 0
+                epochs_since_best_val_set = 0
             else:                               
             # Early stopping
                 epochs_since_best_val_set += 1
