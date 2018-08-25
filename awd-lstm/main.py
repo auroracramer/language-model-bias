@@ -288,11 +288,11 @@ def train():
         if args.beta: loss = loss + sum(args.beta * (rnn_h[1:] - rnn_h[:-1]).pow(2).mean() for rnn_h in rnn_hs[-1:])
 
 
-	if args.bias_reg:
-
+	    if args.bias_reg:
+  
             bias_loss = bias_regularization(model, D, N, args.bias_reg_var_ratio,
                                             args.bias_reg_factor, norm=args.norm_bias)
-	    loss = loss + bias_loss
+	        loss = loss + bias_loss
 
         loss.backward()
 
