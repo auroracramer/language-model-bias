@@ -353,9 +353,9 @@ try:
             else:                               
             # Early stopping
                 epochs_since_best_val_set += 1
-        	    if args.patience > 0 and epochs_since_best_val_set >= args.patience:
-                	LOGGER.info("Early stopping reached")
-                	break
+                if args.patience > 0 and epochs_since_best_val_set >= args.patience:
+                    LOGGER.info("Early stopping reached")
+                    break
 
             
         else:
@@ -370,13 +370,13 @@ try:
                 model_save(args.save)
                 LOGGER.info('Saving model (new best validation)')
                 stored_loss = val_loss
-                epochs_since_best_val_set = 0
+                    epochs_since_best_val_set = 0
             else:                               
             # Early stopping
                 epochs_since_best_val_set += 1
-        	    if args.patience > 0 and epochs_since_best_val_set >= args.patience:
-                	LOGGER.info("Early stopping reached")
-                	break
+                if args.patience > 0 and epochs_since_best_val_set >= args.patience:
+                    LOGGER.info("Early stopping reached")
+                    break
 
 
             if args.optimizer == 'sgd' and 't0' not in optimizer.param_groups[0] and (len(best_val_loss)>args.nonmono and val_loss > min(best_val_loss[:-args.nonmono])):
